@@ -1,0 +1,68 @@
+import os
+import re
+import sys
+from subprocess import run
+from linetimer import CodeTimer
+
+INCLUDE_IO = bool(os.environ.get("INCLUDE_IO", False))
+SHOW_RESULTS = bool(os.environ.get("SHOW_RESULTS", False))
+LOG_TIMINGS = bool(os.environ.get("LOG_TIMINGS", True))
+SCALE_FACTOR = os.environ.get("SCALE_FACTOR", "10")
+WRITE_PLOT = bool(os.environ.get("WRITE_PLOT", True))
+FILE_TYPE = os.environ.get("FILE_TYPE", "parquet")
+SPARK_LOG_LEVEL = os.environ.get("SPARK_LOG_LEVEL", "ERROR")
+# print("include io:", INCLUDE_IO)
+# print("show results:", SHOW_RESULTS)
+# print("log timings:", LOG_TIMINGS)
+# print("file type:", FILE_TYPE)
+
+CWD = os.path.dirname(os.path.realpath(__file__))
+DATASET_BASE_DIR = os.path.join(CWD, f"tables_scale_{SCALE_FACTOR}")
+ANSWERS_BASE_DIR = os.path.join(CWD, "tpch-dbgen/answers")
+TIMINGS_FILE = os.path.join(CWD, os.environ.get("TIMINGS_FILE", "timings.csv"))
+DEFAULT_PLOTS_DIR = os.path.join(CWD, "plots")
+
+
+def append_row(solution: str, q: str, secs: float):
+    with open(TIMINGS_FILE, "a") as f:
+        f.write(f"{solution},{q},{secs}\n")
+
+
+def on_second_call(func):
+    def helper(*args, **kwargs):
+        helper.calls += 1
+
+        # first call is outside the function
+        # this call must set the result
+        if helper.calls == 1:
+            # include IO will compute the result on the 2nd call
+            if not INCLUDE_IO:
+                helper.result = func(*args, **kwargs)
+            return helper.result
+
+        # second call is in the query, now we set the result
+        if INCLUDE_IO and helper.calls == 2:
+            helper.result = func(*args, **kwargs)
+
+        return helper.result
+
+    helper.calls = 0
+    helper.result = None
+
+    return helper
+
+
+def execute_all(solution: str):
+    package_name = f"{solution}_queries"
+
+    expr = re.compile(r"^q(\d+).py")
+    num_queries = 0
+    for file in os.listdir(package_name):
+        g = expr.search(file)
+        if g is not None:
+            num_queries = max(int(g.group(1)), num_queries)
+
+    #with CodeTimer(name=f"Overall execution of ALL {solution} queries", unit="s"):
+    for i in range(1, num_queries + 1):
+        for _ in range(11):
+            run([sys.executable, "-m", f"{package_name}.q{i}"])

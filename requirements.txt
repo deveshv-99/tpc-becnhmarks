@@ -1,0 +1,14 @@
+black==23.3.0
+isort==5.12.0
+linetimer
+plotnine
+plotly
+
+polars
+pyarrow
+dask
+modin[ray]
+vaex
+pyspark
+duckdb
+pandas>=2.0
